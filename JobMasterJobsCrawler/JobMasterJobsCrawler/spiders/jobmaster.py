@@ -31,7 +31,7 @@ class JobmasterSpider(scrapy.Spider):
 
         job_location_links_list = response.xpath("//a[contains(@href,'/check/search.asp?ezor=')]/@href").extract()
 
-        # yield scrapy.Request(response.urljoin(job_location_links_list[-1]),callback=self.parse_each_location,dont_filter=True)
+        # yield scrapy.Request(response.urljoin(job_location_links_list[-3]), callback=self.parse_each_location,dont_filter=True)
 
         for location_li in job_location_links_list:
             yield scrapy.Request(response.urljoin(location_li), callback=self.parse_each_location, dont_filter=True)
@@ -127,6 +127,7 @@ class JobmasterSpider(scrapy.Spider):
                     days = 'ימים'.decode('utf-8')
                     month = 'חוֹדֶשׁ'.decode('utf-8')
                     months = 'חודשים'.decode('utf-8')
+                    hms = [second, seconds, minute, minutes, hour, hours]
 
                     if day in job_post_date:
                         job_post_date = datetime.date.today() - datetime.timedelta(days=job_post_date_num)
@@ -135,7 +136,11 @@ class JobmasterSpider(scrapy.Spider):
                         job_post_date = datetime.date.today() - datetime.timedelta(days=job_post_date_num)
                         job_post_date = job_post_date.strftime("%d/%m/%Y")
 
-                    elif second or seconds or hour or hours or minutes or minute:
+                    elif [x for x in hms if x in job_post_date]:
+                        job_post_date = datetime.date.today()
+                        job_post_date = job_post_date.strftime("%d/%m/%Y")
+
+                    elif job_post_date_num == 0:
                         job_post_date = datetime.date.today()
                         job_post_date = job_post_date.strftime("%d/%m/%Y")
 
