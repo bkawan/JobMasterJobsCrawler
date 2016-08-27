@@ -22,6 +22,11 @@ class JobmasterSpider(scrapy.Spider):
         reload(sys)
         sys.setdefaultencoding('utf-8')
 
+        self.total_locations = 0
+        self.total_locations_job = 0
+        self.all_jobs_count = 0
+        self.each_location_total_jobs = 0
+
     def parse(self, response):
         """
         Get all the links for Location
@@ -34,9 +39,25 @@ class JobmasterSpider(scrapy.Spider):
         # yield scrapy.Request(response.urljoin(job_location_links_list[-3]), callback=self.parse_each_location,dont_filter=True)
 
         for location_li in job_location_links_list:
+            self.total_locations += 1
             yield scrapy.Request(response.urljoin(location_li), callback=self.parse_each_location, dont_filter=True)
 
+        # print("******************")
+        # print("Total Locations: ", self.total_locations)
+        # print("******************")
+
+
+    #
     def parse_each_location(self, response):
+        # print('***********')
+        # print("Location url: ", response.url)
+        # print("Locations: ",response.xpath("//div[@id='pagesUp']/h1/text()").extract_first())
+        # total_jobs_count = response.xpath("//span[@id='JobsCounter1']/text()").extract_first()
+        # print("Total Jobs in this Location: ", total_jobs_count)
+        #
+        # self.all_jobs_count +=int(total_jobs_count)
+        # print("All Job counts in This Site: ",self.all_jobs_count)
+        # print("************")
 
         """ Parse Each location Link and Extract Each job in this location"""
         job_article_id_list = response.xpath("//article[@class='CardStyle JobItem font14 noWrap']/@id").extract()
@@ -47,8 +68,9 @@ class JobmasterSpider(scrapy.Spider):
 
         if job_id_list:
             for job_id in job_id_list:
+                self.each_location_total_jobs += 1
                 job_link = "http://www.jobmaster.co.il/code/check/checknum.asp?flagShare={}".format(job_id)
-                yield scrapy.Request(job_link, self.parse_each_job, dont_filter=True, meta={'job_id': job_id})
+                yield scrapy.Request(job_link, self.parse_each_job,dont_filter=True, meta={'job_id': job_id})
 
         pagi_link_sel_list = response.xpath("//a[@class='paging']")
 
@@ -61,6 +83,9 @@ class JobmasterSpider(scrapy.Spider):
 
     def parse_each_job(self,response):
         # inspect_response(response, self)
+        print("********************")
+        print("This location total jobs:", self.each_location_total_jobs)
+        print("********************")
 
         """ Parse Each job and extract the data points"""
         job_item_sel = response.xpath("//div[@class='JobItemRight']")
@@ -74,12 +99,15 @@ class JobmasterSpider(scrapy.Spider):
 
         try:
             company = job_item_sel.xpath(".//a[@class='font14 ByTitle']/text()").extract_first()
+            if not company:
+                company = job_item_sel.xpath(".//span[@class='font14 ByTitle']/text()").extract_first()
         except:
             company = ""
 
         try:
             company_jobs = job_item_sel.xpath(".//a[@class='font14 ByTitle']/@href").extract_first()
-            company_jobs = response.urljoin(company_jobs)
+            if company_jobs:
+                company_jobs = response.urljoin(company_jobs)
         except:
             company_jobs = ""
 
@@ -165,7 +193,10 @@ class JobmasterSpider(scrapy.Spider):
             'Job_URL': response.url,
             'Country_Areas': country_areas,
             'Job_categories': category,
-            'AllJobs_Job_class': '',
-        }
+            'AllJobs_Job_class': "",
+            'unique_id': 'jobmaster_{}'.format(response.meta['job_id'])
+
+
+            }
 
         yield item

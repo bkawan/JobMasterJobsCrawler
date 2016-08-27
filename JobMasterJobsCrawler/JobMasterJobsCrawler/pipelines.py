@@ -5,6 +5,7 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: http://doc.scrapy.org/en/latest/topics/item-pipeline.html
 
+# JobMasterJob
 import pymysql
 import os
 import sys
@@ -19,14 +20,17 @@ from xlrd import open_workbook
 from twisted.enterprise import adbapi
 pymysql.install_as_MySQLdb()
 from JobMasterJobsCrawler import  settings
+from scrapy.exceptions import DropItem
 
 
 excel_file_path = "../../site_data.xls"
+# excel_file_path = "../site_data.xls"
 
 
 class JobmasterjobscrawlerPipeline(object):
 
     def __init__(self):
+        self.ids_seen = set()
 
         self.sheet_name = 'JobMaster'  # name of the sheet for current website
         self.unsorted_temp_site_data_xls = 'unsorted_site_data.xls'  # temporary xls file which contain scraped item
@@ -59,6 +63,7 @@ class JobmasterjobscrawlerPipeline(object):
                 self.sheet.write(0, 8, 'Country_Areas')
                 self.sheet.write(0, 9, 'Job_categories')
                 self.sheet.write(0, 10, 'AllJobs_Job_class')
+                self.sheet.write(0, 11, 'unique_id')
 
                 self.next_row = self.sheet.last_used_row
 
@@ -81,6 +86,7 @@ class JobmasterjobscrawlerPipeline(object):
             self.sheet.write(0, 8, 'Country_Areas')
             self.sheet.write(0, 9, 'Job_categories')
             self.sheet.write(0, 10, 'AllJobs_Job_class')
+            self.sheet.write(0, 11, 'unique_id')
 
             self.next_row = self.sheet.last_used_row
 
@@ -100,7 +106,7 @@ class JobmasterjobscrawlerPipeline(object):
                 for sheet_name in sheet_name_list:
                     unsorted_xls_df = pd.read_excel(self.unsorted_temp_site_data_xls, sheetname=sheet_name)
                     sorted_xls = unsorted_xls_df.sort_values(by='Company')
-                    sorted_xls = sorted_xls.drop_duplicates()  # remove duplicates
+                    sorted_xls = sorted_xls.drop_duplicates() # remove duplicates
                     sorted_xls.to_excel(writer, sheet_name=sheet_name, index=False)
                 writer.save()
                 os.remove(self.unsorted_temp_site_data_xls)
@@ -113,38 +119,49 @@ class JobmasterjobscrawlerPipeline(object):
 
         else:
             """ if site_data.xls doesnot exists"""
-            unsorted_xls_df = pd.read_excel(self.unsorted_temp_site_data_xls)
-            sorted_xls = unsorted_xls_df.sort_values(by='Company')
-            sorted_xls = sorted_xls.drop_duplicates()
-            sorted_xls.to_excel(excel_file_path, index=False, sheet_name=self.sheet_name)
-            os.remove(self.unsorted_temp_site_data_xls)
+            try:
+                unsorted_xls_df = pd.read_excel(self.unsorted_temp_site_data_xls)
+                sorted_xls = unsorted_xls_df.sort_values(by='Company')
+                sorted_xls = sorted_xls.drop_duplicates()
+                sorted_xls.to_excel(excel_file_path, index=False, sheet_name=self.sheet_name)
+                os.remove(self.unsorted_temp_site_data_xls)
+            except:
+                pass
 
     def process_item(self, item, spider):
+        if item['JobMasterJob']['Job_id'] in self.ids_seen:
+            raise DropItem("*"*100+"\n"+"Duplicate item found: %s" % item + "\n"+"*"*100)
 
-        self.next_row += 1
-        self.sheet.write(self.next_row, 0, item['JobMasterJob']['Site'])
-        self.sheet.write(self.next_row, 1, item['JobMasterJob']['Company'])
-        self.sheet.write(self.next_row, 2, item['JobMasterJob']['Company_jobs'])
-        self.sheet.write(self.next_row, 3, item['JobMasterJob']['Job_id'])
-        self.sheet.write(self.next_row, 4, item['JobMasterJob']['Job_title'])
-        self.sheet.write(self.next_row, 5, item['JobMasterJob']['Job_Description'])
-        self.sheet.write(self.next_row, 6, item['JobMasterJob']['Job_Post_Date'])
-        self.sheet.write(self.next_row, 7, item['JobMasterJob']['Job_URL'])
-        self.sheet.write(self.next_row, 8, item['JobMasterJob']['Country_Areas'])
-        self.sheet.write(self.next_row, 9, item['JobMasterJob']['Job_categories'])
-        self.sheet.write(self.next_row, 10, item['JobMasterJob']['AllJobs_Job_class'])
+        else:
+            self.ids_seen.add(item['JobMasterJob']['Job_id'])
 
-        self.book.save(self.unsorted_temp_site_data_xls)
+            self.next_row += 1
+            self.sheet.write(self.next_row, 0, item['JobMasterJob']['Site'])
+            self.sheet.write(self.next_row, 1, item['JobMasterJob']['Company'])
+            self.sheet.write(self.next_row, 2, item['JobMasterJob']['Company_jobs'])
+            self.sheet.write(self.next_row, 3, item['JobMasterJob']['Job_id'])
+            self.sheet.write(self.next_row, 4, item['JobMasterJob']['Job_title'])
+            self.sheet.write(self.next_row, 5, item['JobMasterJob']['Job_Description'])
+            self.sheet.write(self.next_row, 6, item['JobMasterJob']['Job_Post_Date'])
+            self.sheet.write(self.next_row, 7, item['JobMasterJob']['Job_URL'])
+            self.sheet.write(self.next_row, 8, item['JobMasterJob']['Country_Areas'])
+            self.sheet.write(self.next_row, 9, item['JobMasterJob']['Job_categories'])
+            self.sheet.write(self.next_row, 10, item['JobMasterJob']['AllJobs_Job_class'])
+            self.sheet.write(self.next_row, 11, item['JobMasterJob']['unique_id'])
 
-        return item
+            self.book.save(self.unsorted_temp_site_data_xls)
+
+            return item
 
 
 class MySQLPipeline(object):
+
     def __init__(self, dbpool):
         self.dbpool = dbpool
+        self.ids_seen = set()
 
     @classmethod
-    def from_settings(cls, settings):
+    def from_settings(cls,settings):
         dbargs = dict(
             host=settings['MYSQL_HOST'],
             db=settings['MYSQL_DBNAME'],
@@ -157,28 +174,35 @@ class MySQLPipeline(object):
         return cls(dbpool)
 
     def process_item(self, item, spider):
-        dbpool = self.dbpool.runInteraction(self.insert, item, spider)
-        dbpool.addErrback(self.handle_error, item, spider)
-        dbpool.addBoth(lambda _: item)
-        return dbpool
+        if item['JobMasterJob']['Job_id'] in self.ids_seen:
+
+            raise DropItem("+"*100+"\n"+"Duplicate item found: %s" % item + "\n"+"+"*100)
+        else:
+            self.ids_seen.add(item['JobMasterJob']['Job_id'])
+            dbpool = self.dbpool.runInteraction(self.insert, item, spider)
+            dbpool.addErrback(self.handle_error, item, spider)
+            dbpool.addBoth(lambda _: item)
+            return dbpool
 
     def insert(self, conn, item, spider):
+
         conn.execute("""
-                INSERT INTO drushim (
-                Site,
-                Company,
-                Company_jobs,
-                Job_id,
-                Job_title,
-                Job_Description,
-                Job_Post_Date,
-                Job_URL,
-                Country_Areas,
-                Job_categories,
-                AllJobs_Job_class
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
-            """, (
+            INSERT INTO sites_datas (
+            Site,
+            Company,
+            Company_jobs,
+            Job_id,
+            Job_title,
+            Job_Description,
+            Job_Post_Date,
+            Job_URL,
+            Country_Areas,
+            Job_categories,
+            AllJobs_Job_class,
+            unique_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s)
+        """, (
             item['JobMasterJob']['Site'],
             item['JobMasterJob']['Company'],
             item['JobMasterJob']['Company_jobs'],
@@ -189,7 +213,8 @@ class MySQLPipeline(object):
             item['JobMasterJob']['Job_URL'],
             item['JobMasterJob']['Country_Areas'],
             item['JobMasterJob']['Job_categories'],
-            item['JobMasterJob']['AllJobs_Job_class']
+            item['JobMasterJob']['AllJobs_Job_class'],
+            item['JobMasterJob']['unique_id']
 
         ))
         spider.log("Item stored in dbSchema: %s %r" % (item['JobMasterJob']['Job_id'], item))
@@ -197,4 +222,6 @@ class MySQLPipeline(object):
     def handle_error(self, failure, item, spider):
         """Handle occurred on dbSchema interaction."""
         self.logger.info("DB Schema Handled")
+
+
 
